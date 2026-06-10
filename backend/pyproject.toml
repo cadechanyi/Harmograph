@@ -1,0 +1,33 @@
+[project]
+name = "demucs-service"
+version = "0.1.0"
+description = "Stem separation microservice for Harmograph (FastAPI + Demucs)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "python-multipart==0.0.20",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest==8.3.4",
+    "httpx==0.28.1",
+]
+# Heavy stem-separation model deps. Imports are guarded/lazy in
+# app/separation.py so the app imports and tests run without these installed.
+separation = [
+    "torch>=2.1",
+    "torchaudio>=2.1",
+    "demucs>=4.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.local
+*.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo

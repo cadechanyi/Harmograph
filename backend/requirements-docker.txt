@@ -1,0 +1,21 @@
+# Container runtime requirements for the Demucs_Service deployment artifact.
+#
+# This file is used ONLY by the Docker image (see Dockerfile). It layers the
+# heavy ML dependencies needed to actually run Demucs stem separation on top of
+# the lightweight API dependencies, so the dev-time requirements.txt stays small
+# and fast to install for local API work and tests.
+#
+# torch/torchaudio are pulled from the CPU wheel index in the Dockerfile via
+# --extra-index-url https://download.pytorch.org/whl/cpu to avoid bundling CUDA.
+
+# --- API / web layer (kept in sync with requirements.txt) ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# --- Stem separation (Demucs htdemucs 4-stem model) ---
+demucs==4.0.1
+torch==2.2.2
+torchaudio==2.2.2
+# Audio I/O backends used by Demucs / torchaudio.
+soundfile==0.12.1

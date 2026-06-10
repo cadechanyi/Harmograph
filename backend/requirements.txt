@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Stem separation model (heavy). These pull in the multi-gigabyte ML stack and
+# are NOT required to import the app or run the test suite -- imports of torch /
+# demucs are guarded and performed lazily inside app/separation.py. Install
+# these only in the deployment image that actually runs separation.
+#   torch>=2.1
+#   torchaudio>=2.1
+#   demucs>=4.0
+
+# Test dependencies
+pytest==8.3.4
+httpx==0.28.1

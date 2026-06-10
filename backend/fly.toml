@@ -1,0 +1,53 @@
+# Fly.io deployment configuration for the Demucs_Service.
+#
+# The Demucs_Service is deployed as its own Fly app, independent of the Frontend
+# (Req 4.7, 12.1, 12.2). Deploying or restarting this app does not require
+# touching the Frontend deployment. The Frontend reaches it through its own
+# configurable endpoint (Req 12.3), e.g. https://<this-app>.fly.dev.
+#
+# Deploy:
+#   fly launch --no-deploy   # first time, to create the app
+#   fly deploy               # builds backend/Dockerfile and releases
+#
+# Rename `app` to your chosen Fly application name before first deploy.
+
+app = "harmograph-demucs"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  # Service limits mirror app/config.py defaults; override per environment.
+  DEMUCS_MAX_BYTES = "104857600"
+  DEMUCS_TIMEOUT_SECONDS = "600"
+  DEMUCS_MODEL = "htdemucs"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Stem separation is CPU/GPU heavy and bursty; keep at least one machine warm
+  # so model weights stay resident, but allow scaling to zero is opt-in.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    # Demucs is resource intensive; serialize work per machine.
+    hard_limit = 2
+    soft_limit = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+# Demucs needs substantial memory to hold the model + audio buffers.
+[[vm]]
+  cpu_kind = "performance"
+  cpus = 2
+  memory_mb = 8192

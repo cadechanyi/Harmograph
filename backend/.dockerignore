@@ -1,0 +1,31 @@
+# Keep the build context small and the image clean. Anything not needed to
+# build/run the Demucs_Service image is excluded here.
+
+# Python virtualenv and caches
+.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Tests are not shipped in the runtime image
+tests/
+
+# Local dev / VCS / docs noise
+.git/
+.gitignore
+README.md
+
+# The dev-only requirements file is unused inside the image (the image uses
+# requirements-docker.txt). Excluding it avoids confusion and cache busting.
+requirements.txt
+
+# Deployment configs are not needed inside the image build context
+fly.toml
+modal_app.py
+
+# OS / editor cruft
+.DS_Store
+*.swp
