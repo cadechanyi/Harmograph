@@ -65,6 +65,7 @@ class Element:
     kind: str  # "percussive" | "tonal"
     events: list[dict[str, float]] = field(default_factory=list)
     envelope: list[dict[str, float]] = field(default_factory=list)
+    contour: list[dict[str, float]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -75,7 +76,17 @@ class Element:
             "event_count": len(self.events),
             "events": self.events,
             "envelope": self.envelope,
+            "contour": self.contour,
         }
+
+
+# Tonal stems that get a pitch contour (a melody line mapping time -> pitch).
+# Kept to the melodic lead to limit extra analysis time.
+PITCH_STEMS: dict[str, tuple[float, float]] = {
+    "other": (80.0, 1200.0),
+    "guitar": (80.0, 1200.0),
+    "piano": (60.0, 1200.0),
+}
 
 
 def analyze_stems(stem_paths: dict[str, str]) -> list[dict[str, Any]]:
@@ -165,6 +176,44 @@ def _detect_drum_elements(path: str) -> list[Element]:  # pragma: no cover
     return found
 
 
+def _pitch_contour(y, sr: int, fmin: float, fmax: float, rms):  # pragma: no cover
+    """Estimate a normalized pitch contour, masking quiet/unvoiced frames.
+
+    Returns a list of {t, p, v}: p is pitch normalized 0..1 on a log scale
+    between fmin/fmax, v is the normalized loudness at that frame. Gaps
+    (unvoiced) are simply omitted so the frontend can break the line.
+    """
+    import librosa  # type: ignore
+    import numpy as np  # type: ignore
+
+    f0 = librosa.yin(y, fmin=fmin, fmax=fmax, sr=sr, frame_length=2048, hop_length=HOP)
+    m = min(len(f0), len(rms))
+    if m == 0:
+        return []
+    f0 = f0[:m]
+    energy = rms[:m]
+    times = librosa.frames_to_time(np.arange(m), sr=sr, hop_length=HOP)
+    norm_e = energy / (float(np.max(energy)) + 1e-9)
+    log_min, log_max = np.log(fmin), np.log(fmax)
+    pitch = (np.log(np.clip(f0, fmin, fmax)) - log_min) / (log_max - log_min)
+
+    contour: list[dict[str, float]] = []
+    step = 2  # ~23ms at hop 256 / 22050
+    for i in range(0, m, step):
+        if norm_e[i] < 0.08:
+            continue  # quiet / unvoiced — break the line here
+        contour.append(
+            {
+                "t": round(float(times[i]), 4),
+                "p": round(float(pitch[i]), 4),
+                "v": round(float(norm_e[i]), 4),
+            }
+        )
+        if len(contour) >= MAX_EVENTS:
+            break
+    return contour
+
+
 def _detect_tonal_element(stem_name: str, path: str) -> Element | None:  # pragma: no cover
     """Detect a tonal stem's note onsets + loudness envelope, presence-gated."""
     import librosa  # type: ignore
@@ -191,6 +240,12 @@ def _detect_tonal_element(stem_name: str, path: str) -> Element | None:  # pragm
         for i in range(0, rms.size, step)
     ]
 
+    # Pitch contour for melodic leads so the visual line follows pitch.
+    contour: list[dict[str, float]] = []
+    if stem_name in PITCH_STEMS:
+        fmin, fmax = PITCH_STEMS[stem_name]
+        contour = _pitch_contour(y, ANALYSIS_SR, fmin, fmax, rms)
+
     return Element(
         id=stem_name,
         label=ELEMENT_LABELS.get(stem_name, stem_name.title()),
@@ -198,4 +253,5 @@ def _detect_tonal_element(stem_name: str, path: str) -> Element | None:  # pragm
         kind="tonal",
         events=events,
         envelope=envelope,
+        contour=contour,
     )
