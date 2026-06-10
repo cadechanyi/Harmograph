@@ -1,5 +1,5 @@
-import { HarmographPage } from "@/components";
+import { StemLab } from "@/components/StemLab";
 
 export default function Home() {
-  return <HarmographPage />;
+  return <StemLab />;
 }

@@ -43,14 +43,24 @@ const PITCH_CLASSES: readonly PitchClass[] = [
 ];
 
 /**
- * Dynamically import an optional dependency by name. The specifier is passed
- * through a variable so the TypeScript compiler treats the result as `any` and
- * does not require the module to be installed at build time. Rejects when the
+ * Dynamically import an optional dependency by name. Each specifier is a string
+ * literal so bundlers (webpack/Next.js, Vite, etc.) can statically resolve and
+ * code-split the dependency; a variable specifier triggers webpack's "Critical
+ * dependency: the request of a dependency is an expression" warning and fails
+ * to load at runtime. The imports are still lazy (only reached when the default
+ * extractor actually runs), and the unit tests inject a mock extractor so this
+ * path is never exercised without the libraries present. Rejects when the
  * module cannot be loaded.
  */
-async function loadModule(name: string): Promise<unknown> {
-  const specifier = name;
-  return import(/* @vite-ignore */ specifier);
+async function loadModule(name: "meyda" | "essentia.js"): Promise<unknown> {
+  switch (name) {
+    case "meyda":
+      return import("meyda");
+    case "essentia.js":
+      return import("essentia.js");
+    default:
+      throw new Error(`unknown analysis module: ${name as string}`);
+  }
 }
 
 /** Resolve Meyda's callable namespace from its module shape. */
@@ -143,7 +153,19 @@ async function loadEssentia(): Promise<Record<string, (...args: unknown[]) => un
   };
   const ns = mod.default ?? mod;
   const Essentia = ns.Essentia;
-  const wasm = ns.EssentiaWASM;
+  // The UMD WASM backend is wrapped one level deep: `essentia-wasm.umd.js` does
+  // `exports.EssentiaWASM = Module`, so the package's top-level `EssentiaWASM`
+  // export is `{ EssentiaWASM: Module }`. The `Essentia` constructor expects the
+  // inner emscripten `Module`, so unwrap it (tolerating builds that expose the
+  // module directly). Passing the wrapper object instead silently breaks every
+  // Essentia algorithm (melody/tempo/key).
+  const wasmExport = ns.EssentiaWASM as
+    | { EssentiaWASM?: unknown }
+    | undefined;
+  const wasm =
+    wasmExport && typeof wasmExport === "object" && "EssentiaWASM" in wasmExport
+      ? wasmExport.EssentiaWASM
+      : wasmExport;
   if (!Essentia || !wasm) throw new Error("essentia.js unavailable");
   const instance = new Essentia(wasm);
   return instance as unknown as Record<string, (...args: unknown[]) => unknown>;

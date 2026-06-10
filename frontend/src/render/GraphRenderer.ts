@@ -32,6 +32,36 @@ import {
   type P5DrawTarget,
   type StemRenderer,
 } from "./StemRenderer";
+import { createDrumsStemRenderer } from "./DrumsStemRenderer";
+import { createMelodyStemRenderer } from "./MelodyStemRenderer";
+import { createBassStemRenderer } from "./BassStemRenderer";
+import { createVocalsStemRenderer } from "./VocalsStemRenderer";
+import { createChordsStemRenderer } from "./ChordsStemRenderer";
+
+/**
+ * Construct the concrete Stem_Renderer for a given stem, each carrying its
+ * documented Graph_Style: drums → bouncing balls (Req 5.2), melody → parametric
+ * curve (Req 5.3), bass → sine wave (Req 5.4), vocals → RMS envelope (Req 5.5),
+ * chords → stacked curves (Req 5.6). The Graph_Renderer drew a plain
+ * BaseStemRenderer polyline for every stem before this was wired in, so none of
+ * the per-stem visual styles appeared.
+ */
+function createStemRendererFor(stem: StemType): BaseStemRenderer {
+  switch (stem) {
+    case "drums":
+      return createDrumsStemRenderer();
+    case "melody":
+      return createMelodyStemRenderer();
+    case "bass":
+      return createBassStemRenderer();
+    case "vocals":
+      return createVocalsStemRenderer();
+    case "chords":
+      return createChordsStemRenderer();
+    default:
+      return new BaseStemRenderer(stem);
+  }
+}
 
 /** The Graph_Renderer surface (design interface). */
 export interface GraphRenderer {
@@ -118,7 +148,7 @@ export class GraphRendererImpl implements GraphRenderer {
     this.p5Factory = options.p5Factory;
 
     for (const stem of STEM_TYPES) {
-      const renderer = new BaseStemRenderer(stem);
+      const renderer = createStemRendererFor(stem);
       this.stemRenderers.set(stem, renderer);
       // Wire the renderer to its stem's Timeline_Points when a stream is given.
       if (this.timeline) {
