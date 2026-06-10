@@ -114,6 +114,7 @@ export function StemLab() {
         kind: "percussive" | "tonal";
         events: { t: number; strength: number }[];
         envelope: { t: number; v: number }[];
+        contour: { t: number; p: number; v: number }[];
       }>;
       setStems(entries);
       setElements(
@@ -124,6 +125,7 @@ export function StemLab() {
           kind: e.kind,
           events: e.events ?? [],
           envelope: e.envelope ?? [],
+          contour: e.contour ?? [],
         })),
       );
       setStatus({
