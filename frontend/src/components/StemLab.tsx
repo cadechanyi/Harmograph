@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * StemLab — Phase 1 UI: upload a song, separate it into stems with the
- * Demucs_Service, and play each separated component individually to verify
- * separation quality. Deliberately minimal: upload + per-stem players, no graph
- * styles or unit pickers (those belong to the Phase 2 flow visual).
+ * Harmograph — upload a song, separate it into its components with the
+ * Demucs_Service, then visualize them as a flowing "Geometry Dash" graph synced
+ * to playback. The separated stems are also listed below for verification.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FlowVisualizer, type VisualElement } from "./FlowVisualizer";
 
 /** Base URL of the Demucs_Service (configurable; defaults to local dev). */
 const ENDPOINT =
@@ -15,26 +15,12 @@ const ENDPOINT =
 
 /** A separated stem descriptor as returned by POST /separate. */
 interface StemEntry {
-  /** Demucs stem key. */
   key: string;
-  /** Human label shown in the UI. */
   label: string;
-  /** Absolute URL to the stem WAV. */
   url: string;
-  /** File size in bytes. */
   bytes: number;
 }
 
-/** A detected element (basic building block) within a stem. */
-interface ElementEntry {
-  id: string;
-  label: string;
-  parent: string;
-  kind: "percussive" | "tonal";
-  eventCount: number;
-}
-
-/** Demucs stem key → display label (htdemucs produces these four). */
 const STEM_LABELS: Record<string, string> = {
   vocals: "Vocals",
   drums: "Drums",
@@ -42,7 +28,6 @@ const STEM_LABELS: Record<string, string> = {
   other: "Melody / Other",
 };
 
-/** Canonical display order. */
 const STEM_ORDER = ["vocals", "drums", "bass", "other"];
 
 type Status =
@@ -65,12 +50,31 @@ function formatBytes(bytes: number): string {
 export function StemLab() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [stems, setStems] = useState<StemEntry[]>([]);
-  const [elements, setElements] = useState<ElementEntry[]>([]);
+  const [elements, setElements] = useState<VisualElement[]>([]);
+  const [songUrl, setSongUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const songUrlRef = useRef<string | null>(null);
+
+  // Revoke the previous object URL when it changes / on unmount.
+  useEffect(() => {
+    songUrlRef.current = songUrl;
+    return () => {
+      if (songUrlRef.current) URL.revokeObjectURL(songUrlRef.current);
+    };
+  }, [songUrl]);
 
   const separate = useCallback(async (file: File) => {
     setStems([]);
     setElements([]);
+    setIsPlaying(false);
+    // Local playback of the original mix, synced to the visual.
+    setSongUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setStatus({ kind: "separating", fileName: file.name });
     try {
       const form = new FormData();
@@ -108,7 +112,8 @@ export function StemLab() {
         label: string;
         parent: string;
         kind: "percussive" | "tonal";
-        event_count: number;
+        events: { t: number; strength: number }[];
+        envelope: { t: number; v: number }[];
       }>;
       setStems(entries);
       setElements(
@@ -117,7 +122,8 @@ export function StemLab() {
           label: e.label,
           parent: e.parent,
           kind: e.kind,
-          eventCount: e.event_count,
+          events: e.events ?? [],
+          envelope: e.envelope ?? [],
         })),
       );
       setStatus({
@@ -125,7 +131,7 @@ export function StemLab() {
         fileName: file.name,
         durationSeconds: Number(body?.duration_seconds ?? 0),
       });
-    } catch (err) {
+    } catch {
       setStatus({
         kind: "error",
         message:
@@ -142,31 +148,44 @@ export function StemLab() {
     [separate],
   );
 
+  const getCurrentTime = useCallback(() => audioRef.current?.currentTime ?? 0, []);
+
+  const togglePlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play();
+    } else {
+      audio.pause();
+    }
+  }, []);
+
   const busy = status.kind === "separating";
+  const ready = status.kind === "done" && elements.length > 0;
 
   const statusLine = useMemo(() => {
     switch (status.kind) {
       case "separating":
-        return `Separating "${status.fileName}" with Demucs… this runs on CPU and can take a bit.`;
+        return `Separating "${status.fileName}" with Demucs… this runs locally and can take ~20–30s for a full song.`;
       case "done":
-        return `Separated "${status.fileName}" (${status.durationSeconds.toFixed(1)}s). Play each component below.`;
+        return `Ready — press play to watch "${status.fileName}" flow.`;
       case "error":
         return status.message;
       default:
-        return "Upload an MP3 or WAV to separate it into its musical components.";
+        return "Upload an MP3 or WAV to separate it and watch its components flow.";
     }
   }, [status]);
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl p-6">
+    <main className="mx-auto min-h-screen w-full max-w-4xl p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Harmograph — Stem Lab</h1>
+        <h1 className="text-2xl font-semibold">Harmograph</h1>
         <p className="text-sm opacity-70">
-          Phase 1: separate a song into its components and verify each one.
+          Separate a song into its parts and watch them flow in time.
         </p>
       </header>
 
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -175,6 +194,15 @@ export function StemLab() {
         >
           {busy ? "Separating…" : "Upload audio"}
         </button>
+        {ready && (
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
+          >
+            {isPlaying ? "Pause" : "Play"}
+          </button>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -191,51 +219,82 @@ export function StemLab() {
       </div>
 
       <p
-        className={`mb-6 text-sm ${status.kind === "error" ? "text-red-400" : "opacity-80"}`}
+        className={`mb-4 text-sm ${status.kind === "error" ? "text-red-400" : "opacity-80"}`}
       >
         {statusLine}
       </p>
 
+      {/* Original mix drives playback + the visual clock. */}
+      {songUrl && (
+        <audio
+          ref={audioRef}
+          src={songUrl}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => setIsPlaying(false)}
+          className="hidden"
+        />
+      )}
+
+      {ready && (
+        <div className="mb-8">
+          <FlowVisualizer
+            elements={elements}
+            getCurrentTime={getCurrentTime}
+            duration={status.kind === "done" ? status.durationSeconds : 0}
+          />
+        </div>
+      )}
+
       {stems.length > 0 && (
-        <ul className="space-y-3">
-          {stems.map((stem) => {
-            const stemElements = elements.filter((e) => e.parent === stem.key);
-            return (
-              <li
-                key={stem.key}
-                className="rounded-lg border border-neutral-700 bg-neutral-900/60 p-4"
-              >
-                <div className="mb-2 flex items-baseline justify-between">
-                  <span className="font-medium">{stem.label}</span>
-                  <span className="text-xs opacity-60">
-                    {formatBytes(stem.bytes)}
-                  </span>
-                </div>
-                <audio controls preload="none" className="w-full" src={stem.url}>
-                  Your browser does not support audio playback.
-                </audio>
-                {stemElements.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {stemElements.map((el) => (
-                      <span
-                        key={el.id}
-                        className={`rounded-full px-2.5 py-1 text-xs ${
-                          el.kind === "percussive"
-                            ? "bg-amber-500/15 text-amber-300"
-                            : "bg-emerald-500/15 text-emerald-300"
-                        }`}
-                        title={`${el.kind} element`}
-                      >
-                        {el.label} · {el.eventCount}
-                        {el.kind === "percussive" ? " hits" : " onsets"}
-                      </span>
-                    ))}
+        <section>
+          <h2 className="mb-3 text-sm font-semibold opacity-70">
+            Components (verify separation)
+          </h2>
+          <ul className="space-y-3">
+            {stems.map((stem) => {
+              const stemElements = elements.filter((e) => e.parent === stem.key);
+              return (
+                <li
+                  key={stem.key}
+                  className="rounded-lg border border-neutral-700 bg-neutral-900/60 p-4"
+                >
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <span className="font-medium">{stem.label}</span>
+                    <span className="text-xs opacity-60">
+                      {formatBytes(stem.bytes)}
+                    </span>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  <audio
+                    controls
+                    preload="none"
+                    className="w-full"
+                    src={stem.url}
+                  >
+                    Your browser does not support audio playback.
+                  </audio>
+                  {stemElements.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {stemElements.map((el) => (
+                        <span
+                          key={el.id}
+                          className={`rounded-full px-2.5 py-1 text-xs ${
+                            el.kind === "percussive"
+                              ? "bg-amber-500/15 text-amber-300"
+                              : "bg-emerald-500/15 text-emerald-300"
+                          }`}
+                        >
+                          {el.label} · {el.events.length}
+                          {el.kind === "percussive" ? " hits" : " onsets"}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
     </main>
   );
