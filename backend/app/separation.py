@@ -21,7 +21,7 @@ import concurrent.futures
 import os
 import tempfile
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -102,6 +102,7 @@ class SeparationResult:
     duration_seconds: float
     format: str
     stems: Mapping[str, StemFile]
+    elements: list[dict[str, Any]] = field(default_factory=list)
 
     def to_body(self) -> dict[str, Any]:
         return {
@@ -109,6 +110,7 @@ class SeparationResult:
             "duration_seconds": self.duration_seconds,
             "format": self.format,
             "stems": {name: stem.to_dict() for name, stem in self.stems.items()},
+            "elements": self.elements,
         }
 
 
@@ -208,11 +210,21 @@ def run_separation(
         for name, path in stem_paths.items()
     }
 
+    # Inspect each stem for the finer elements it contains (kick/snare/hihat,
+    # tonal note onsets), presence-gated so absent elements are omitted.
+    try:
+        from .elements import analyze_stems
+
+        elements = analyze_stems(stem_paths)
+    except Exception:  # noqa: BLE001 - element detection is best-effort.
+        elements = []
+
     return SeparationResult(
         job_id=job_id,
         duration_seconds=duration,
         format=OUTPUT_FORMAT,
         stems=stems,
+        elements=elements,
     )
 
 

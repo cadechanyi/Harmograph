@@ -25,6 +25,15 @@ interface StemEntry {
   bytes: number;
 }
 
+/** A detected element (basic building block) within a stem. */
+interface ElementEntry {
+  id: string;
+  label: string;
+  parent: string;
+  kind: "percussive" | "tonal";
+  eventCount: number;
+}
+
 /** Demucs stem key → display label (htdemucs produces these four). */
 const STEM_LABELS: Record<string, string> = {
   vocals: "Vocals",
@@ -56,10 +65,12 @@ function formatBytes(bytes: number): string {
 export function StemLab() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [stems, setStems] = useState<StemEntry[]>([]);
+  const [elements, setElements] = useState<ElementEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const separate = useCallback(async (file: File) => {
     setStems([]);
+    setElements([]);
     setStatus({ kind: "separating", fileName: file.name });
     try {
       const form = new FormData();
@@ -92,7 +103,23 @@ export function StemLab() {
           bytes: rawStems[key].bytes,
         }),
       );
+      const rawElements = (body?.elements ?? []) as Array<{
+        id: string;
+        label: string;
+        parent: string;
+        kind: "percussive" | "tonal";
+        event_count: number;
+      }>;
       setStems(entries);
+      setElements(
+        rawElements.map((e) => ({
+          id: e.id,
+          label: e.label,
+          parent: e.parent,
+          kind: e.kind,
+          eventCount: e.event_count,
+        })),
+      );
       setStatus({
         kind: "done",
         fileName: file.name,
@@ -171,22 +198,43 @@ export function StemLab() {
 
       {stems.length > 0 && (
         <ul className="space-y-3">
-          {stems.map((stem) => (
-            <li
-              key={stem.key}
-              className="rounded-lg border border-neutral-700 bg-neutral-900/60 p-4"
-            >
-              <div className="mb-2 flex items-baseline justify-between">
-                <span className="font-medium">{stem.label}</span>
-                <span className="text-xs opacity-60">
-                  {formatBytes(stem.bytes)}
-                </span>
-              </div>
-              <audio controls preload="none" className="w-full" src={stem.url}>
-                Your browser does not support audio playback.
-              </audio>
-            </li>
-          ))}
+          {stems.map((stem) => {
+            const stemElements = elements.filter((e) => e.parent === stem.key);
+            return (
+              <li
+                key={stem.key}
+                className="rounded-lg border border-neutral-700 bg-neutral-900/60 p-4"
+              >
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="font-medium">{stem.label}</span>
+                  <span className="text-xs opacity-60">
+                    {formatBytes(stem.bytes)}
+                  </span>
+                </div>
+                <audio controls preload="none" className="w-full" src={stem.url}>
+                  Your browser does not support audio playback.
+                </audio>
+                {stemElements.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {stemElements.map((el) => (
+                      <span
+                        key={el.id}
+                        className={`rounded-full px-2.5 py-1 text-xs ${
+                          el.kind === "percussive"
+                            ? "bg-amber-500/15 text-amber-300"
+                            : "bg-emerald-500/15 text-emerald-300"
+                        }`}
+                        title={`${el.kind} element`}
+                      >
+                        {el.label} · {el.eventCount}
+                        {el.kind === "percussive" ? " hits" : " onsets"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>

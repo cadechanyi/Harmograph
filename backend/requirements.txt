@@ -9,6 +9,8 @@ torchaudio==2.11.0
 demucs==4.0.1
 soundfile==0.14.0
 numpy==2.4.6
+# Onset / band element detection (kick/snare/hihat, tonal onsets).
+librosa==0.11.0
 # Provides CA certificates for the one-time model weight download on macOS
 # (python.org Python ships without them). Point SSL_CERT_FILE at it if needed.
 certifi==2025.10.5
